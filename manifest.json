@@ -1,0 +1,16 @@
+{
+    "name": "Tabs Assistant",
+    "version": "1.0.0",
+    "manifest_version": 3,
+    "description": "Tabs Assistant",
+    "minimum_chrome_version": "88.0",
+    "icons":
+    {
+        "128": "logo.png"
+    },
+    "background": {
+      "service_worker": "background.js"
+    },
+    "permissions": ["tabs"]
+
+}
