@@ -1,27 +1,11 @@
+import { closeDuplicateTabs } from "./dublicateTabs";
+
 const GLOBAL_BOOKMARK_TREE = 'GLOBAL_BOOKMARK_TREE';
 const OPEN_WINDOW_TABS_LIST_MAP = 'OPEN_WINDOW_TABS_LIST_MAP';
 var bookmar_tree = null;
 var windows_tab_map = null;
 
-function closeDuplicateTabs(){
-    chrome.tabs.query({}, (tabs) => {
-        var urlSet = {};
-        for (let i = 0; i < tabs.length; i++) {
-            if (tabs[i].url) {
-                var openURL = tabs[i].url.toString();
-                if(urlSet[openURL] && urlSet[openURL] == true){
-                    chrome.tabs.remove(tabs[i].id, function() {});
-                }else{
-                    urlSet[openURL] = true;
-                }
-                
-            }
-        }
-    
-        urlSet = {};
-    });
-}
-
+// Set alarm for clearing duplicate tabs
 chrome.alarms.get('DuplicatTabCheckPeriodic', (alarm) => {
 
     if(!alarm){
@@ -30,6 +14,7 @@ chrome.alarms.get('DuplicatTabCheckPeriodic', (alarm) => {
     }
 })
 
+// Set alarm for handling long living tabs, for closing tabs and adding to bookmarks
 chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
 
     if(!alarm){
@@ -48,12 +33,18 @@ chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
 })*/
 
 
+// Alarm listener common for all alarm events
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     var initPromiseList = [];
 
     if(alarm.name == 'DuplicatTabCheckPeriodic'){
-        closeDuplicateTabs();
+        await closeDuplicateTabs();
+
     }else if(alarm.name == 'LongStayingTabCheckPeriodic'){
+        
+        await closeDuplicateTabs();
+
+        // Getting bookmars and window + tabs data from Local storage
         initPromiseList.push(getFromLocalStorage(GLOBAL_BOOKMARK_TREE));
         initPromiseList.push(getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP));
         await Promise.all(initPromiseList);
@@ -69,8 +60,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 //and with lab list & time - update bookmark folder
 async function checkAndUpdateBookmarsFolder(){
 
-    
-    if(!windows_tab_map){
+    // if windows to tab map is null
+    if(!windows_tab_map || Object.keys(windows_tab_map).length == 0){
         //create list of all tabs and windows, update local storage first time
         chrome.windows.getAll((windows) => {
             windows.forEach(window => {
@@ -86,28 +77,42 @@ async function checkAndUpdateBookmarsFolder(){
         setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
        
     }else {
-        // update window_tab map and filter out the tab list to move to bookmark folder
-        var addToBookMarkList = {};
+
+        // if window from map is not open currently then remove entire id{} from map
+        var currenOpenWindowIds = [];
+
         chrome.windows.getAll((windows) => {
             windows.forEach(window => {
+                currenOpenWindowIds.push(window.id);
+            });
+        });
+
+        Object.keys(windows_tab_map).forEach(windowId => {
+            if(!currenOpenWindowIds.includes(windowId)){
+                delete windows_tab_map[windowId];
+            }
+        })
+
+        // update window_tab map and filter out the tab list to move to bookmark folder
+        var addToBookMarkList = {};
+
+        chrome.windows.getAll((windows) => {
+            windows.forEach(window => {
+                currenOpenWindowIds.push(window.id);
                 
+                // if window is already present in map
+                // Add new tabs to already present window map
                 if(windows_tab_map.includes(window.id)){
                     var wtm = windows_tab_map[window.id];
-                    var bmMoveTablist = [];
                     window.tabs.forEach(tab => {
-                        if(wtm.includes(tab.id)){
-                            if(wtm[tab.id] <= ((new Date()).getDate() - 5)){
-                                bmMoveTablist.push(tab);
-                                delete wtm[tab.id];
-                            }
-                        }else{
+                        if(!wtm.includes(tab.id)){
                             wtm[tab.id] = (new Date()).getDate();
                         }
                     });
-                    addToBookMarkList[window.id] = bmMoveTablist;
                     windows_tab_map[window.id] = wtm;
 
                 }else{
+                    //if window id is already not present in map
                     var tab_time_map = {};
                     window.tabs.forEach(tab => {
                         tab_time_map[tab.id] = (new Date()).getDate();
@@ -117,9 +122,36 @@ async function checkAndUpdateBookmarsFolder(){
                     windows_tab_map[window.id] = tab_time_map;
                 }
 
+                // add to bookmark adding list
+                if(windows_tab_map.includes(window.id)){
+                    var wtm = windows_tab_map[window.id];
+                    var bmMoveTablist = [];
+                    window.tabs.forEach(tab => {
+                        if(wtm.includes(tab.id)){
+                            if(wtm[tab.id] <= ((new Date()).getDate() - 5)){
+                                bmMoveTablist.push(tab);
+                                delete wtm[tab.id];
+                            }
+                        }
+                    });
+
+                    //if window is getting empty remove window from map
+                    if(Object.keys(wtm).length == 0){
+                        delete windows_tab_map[window.id];
+                    }else{
+                        windows_tab_map[window.id] = wtm;
+                    }
+
+                    addToBookMarkList[window.id] = bmMoveTablist;
+                    
+                }
+
             });
+
         })
+
         setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
+
 
         //move tabs to bookmark and close tabs, add to local bookmark folder map
         if(Object.keys(bookmar_tree.bookmarkChildrens).length > 0){
@@ -229,6 +261,8 @@ function checkForBookmarkFolderAvailable(){
     chrome.bookmarks.get(bmFolderId, (results) => {
         if(results.length == 0){
             createBookmarkBarFolder();
+        }else {
+            // todo bookmark folder index to 0
         }
 
     })
@@ -237,10 +271,12 @@ function checkForBookmarkFolderAvailable(){
 
 //get from local storage
 async function getFromLocalStorage(storageKey){
+
     return new Promise(async (resolve) =>{
         chrome.storage.local.get([storageKey]).then((result) => {
             if(storageKey == GLOBAL_BOOKMARK_TREE){
                 bookmar_tree = result;
+
                 if(!bookmar_tree){
                     createBookmarkBarFolder();
                 }else{
@@ -251,6 +287,9 @@ async function getFromLocalStorage(storageKey){
                
             }else if(storageKey == OPEN_WINDOW_TABS_LIST_MAP){
                 windows_tab_map = result;
+                //if(!windows_tab_map){
+                //    windows_tab_map = {}
+                //}
                 resolve();
             }
         })
@@ -260,9 +299,46 @@ async function getFromLocalStorage(storageKey){
 
 //set to local storage
 function setToLocalStorage(storageKey, value){
-    chrome.storage.local.set({storageKey: value }).then(() => {
+    chrome.storage.local.set({[storageKey]: value }).then(() => {
         console.log("Setting value to storage success");
     });
 }
 
+// ----- todo ------ Add: tab create listener - update windows tab map in local storage
+chrome.tabs.onCreated.addListener(async (tab) => {
+    await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
+    updateWindowTabMap(tab.windowId, tab.id);
 
+})
+
+// ----- todo ------ Add: tab update listener - update windows tab map in local storage
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
+    updateWindowTabMap(tab.windowId, tab.id);
+
+})
+
+//updating tab time details in window map LS
+function updateWindowTabMap(windowId, tabId){
+
+
+}
+
+
+// ----- todo ------ Add: manual tab close listener - remove from window tab map Local storage list 
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+    await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
+
+    if(windows_tab_map[removeInfo.windowId]){
+        var wtp = windows_tab_map[removeInfo.windowId];
+        delete wtp[tabId];
+        windows_tab_map[removeInfo.windowId] = wtp;
+
+        setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
+    }
+
+})
+
+
+// -----todo ------- Add: Tab opening from bookmark - remove from bookmark folder on browser + local storage
+    // -----todo ------- Add: check if bookmark child folder is empty, delete child folder from browser bookmark + local storagechrome.tabs.onRemoved.addListener(
