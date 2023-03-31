@@ -20,7 +20,7 @@ chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
     if(!alarm){
         //Every 5 days it checks for long staying tabs, moves it to bookmarks with easy accessible option and closes the tab
         //chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 * 5 });
-        chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 2.0, periodInMinutes: 2.0});
+        chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0});
 
     }
 })
@@ -62,61 +62,63 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 //and with lab list & time - update bookmark folder
 async function checkAndUpdateBookmarsFolder(){
 
-    // if windows to tab map is null
-    if(!windows_tab_map || Object.keys(windows_tab_map).length == 0){
-        //create list of all tabs and windows, update local storage first time
-        chrome.windows.getAll((windows) => {
-            windows.forEach(window => {
+    try{
+        // if windows to tab map is null
+        if(!windows_tab_map || Object.keys(windows_tab_map).length == 0){
+            //create list of all tabs and windows, update local storage first time
+            var lwindows = await chrome.windows.getAll();
+            
+            lwindows.forEach(async (window) => {
                 var tab_time_map = {};
-                chrome.tabs.query({windowId: window.id}, (result) => {
-                    result.forEach(tab => {
-                        //tab_time_map[tab.id] = (new Date()).getDate();
-                        tab_time_map[tab.id] = (new Date()).getTime();
-                        
-                    });
 
+                var ltabs = await chrome.tabs.query({windowId: window.id});
+                ltabs.forEach(tab => {
+                    //tab_time_map[tab.id] = (new Date()).getDate();
+                    tab_time_map[tab.id] = (new Date()).getTime();
+                    
                 });
 
                 windows_tab_map[window.id] = tab_time_map;
+                setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
             });
-        })
-        setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
-       
-    }else {
+        
+        }else {
 
-        // if window from map is not open currently then remove entire id{} from map
-        var currenOpenWindowIds = [];
+            // if window from map is not open currently then remove entire id{} from map
+            var currenOpenWindowIds = [];
 
-        chrome.windows.getAll((windows) => {
-            windows.forEach(window => {
-                currenOpenWindowIds.push(window.id);
+            var lwindows = await chrome.windows.getAll();
+            
+            lwindows.forEach(window => {
+                currenOpenWindowIds.push(window.id.toString());
             });
-        });
+            
+            Object.keys(windows_tab_map).forEach(windowId => {
+                windowId = windowId.toString();
+                if(!currenOpenWindowIds.includes(windowId)){
+                    delete windows_tab_map[windowId];
+                }
+            })
 
-        Object.keys(windows_tab_map).forEach(windowId => {
-            if(!currenOpenWindowIds.includes(windowId)){
-                delete windows_tab_map[windowId];
-            }
-        })
+            // update window_tab map and filter out the tab list to move to bookmark folder
+            var addToBookMarkList = {};
+            var windowCompletedCount = 0;
 
-        // update window_tab map and filter out the tab list to move to bookmark folder
-        var addToBookMarkList = {};
-
-        chrome.windows.getAll((windows) => {
-            windows.forEach(window => {
-                currenOpenWindowIds.push(window.id);
+            
+            lwindows.forEach(async (window) => {
+                //currenOpenWindowIds.push(window.id);
                 
                 // if window is already present in map
                 // Add new tabs to already present window map
-                if(windows_tab_map.includes(window.id)){
+                if(windows_tab_map[window.id]){
                     var wtm = windows_tab_map[window.id];
-                    chrome.tabs.query({windowId: window.id}, (result) => {
-                        result.forEach(tab => {
-                            if(!wtm.includes(tab.id)){
-                                //wtm[tab.id] = (new Date()).getDate();
-                                wtm[tab.id] = (new Date()).getTime();
-                            }
-                        });
+
+                    var ltabs = await chrome.tabs.query({windowId: window.id});
+                    ltabs.forEach(tab => {
+                        if(!wtm[tab.id]){
+                            //wtm[tab.id] = (new Date()).getDate();
+                            wtm[tab.id] = (new Date()).getTime();
+                        }
                     });
                     
                     windows_tab_map[window.id] = wtm;
@@ -124,35 +126,36 @@ async function checkAndUpdateBookmarsFolder(){
                 }else{
                     //if window id is already not present in map
                     var tab_time_map = {};
-                    chrome.tabs.query({windowId: window.id}, (result) => {
-                        result.forEach(tab => {
-                            //tab_time_map[tab.id] = (new Date()).getDate();
-                            tab_time_map[tab.id] = (new Date()).getTime();
-                            
-                        });
+
+                    var ltabs = await chrome.tabs.query({windowId: window.id});
+                    ltabs.forEach(tab => {
+                        //tab_time_map[tab.id] = (new Date()).getDate();
+                        tab_time_map[tab.id] = (new Date()).getTime();
+                        
                     });
                     
                     windows_tab_map[window.id] = tab_time_map;
                 }
 
                 // add to bookmark adding list
-                if(windows_tab_map.includes(window.id)){
+                if(windows_tab_map[window.id]){
                     var wtm = windows_tab_map[window.id];
                     var bmMoveTablist = [];
-                    chrome.tabs.query({windowId: window.id}, (result) => {
-                        result.forEach(tab => {
-                            if(wtm.includes(tab.id)){
-                                /*if(wtm[tab.id] <= ((new Date()).getDate() - 5)){
-                                    bmMoveTablist.push(tab);
-                                    delete wtm[tab.id];
-                                }*/
-                                if(((new Date()).getTime() - wtm[tab.id] > 2 * 60 * 1000)){
-                                    bmMoveTablist.push(tab);
-                                    delete wtm[tab.id];
-                                }
+
+                    var ltabs = await chrome.tabs.query({windowId: window.id});
+                    ltabs.forEach(tab => {
+                        if(wtm[tab.id]){
+                            /*if(wtm[tab.id] <= ((new Date()).getDate() - 5)){
+                                bmMoveTablist.push(tab);
+                                delete wtm[tab.id];
+                            }*/
+                            if(((new Date()).getTime() - wtm[tab.id] > 2 * 60 * 1000)){
+                                bmMoveTablist.push(tab);
+                                delete wtm[tab.id];
                             }
-                        });
+                        }
                     });
+                    
                     
                     //if window is getting empty remove window from map
                     if(Object.keys(wtm).length == 0){
@@ -161,50 +164,67 @@ async function checkAndUpdateBookmarsFolder(){
                         windows_tab_map[window.id] = wtm;
                     }
 
-                    addToBookMarkList[window.id] = bmMoveTablist;
+                    if(bmMoveTablist.length > 0){
+                        addToBookMarkList[window.id] = bmMoveTablist;
+                    }
                     
                 }
 
+                setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
+
+                windowCompletedCount += 1;
+                if(lwindows.length == windowCompletedCount){
+                    //move tabs to bookmark and close tabs, add to local bookmark folder map
+                    moveTabsToBookmark(addToBookMarkList);
+                }
+
             });
-
-        })
-
-        setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
-
-        //move tabs to bookmark and close tabs, add to local bookmark folder map
-        if(addToBookMarkList.length > 0){
-            if(Object.keys(bookmar_tree.bookmarkChildrens).length > 0){
-                var childerWindowIds = [];
-                var promiseList = [];
-                for(var key in bookmar_tree.bookmarkChildrens){
-                    childerWindowIds.push(bookmar_tree.bookmarkChildrens[key].windowId);
-                }
+            
+        }
+    }catch(error){
+        console.log(error);
+    }
     
-                for(var key in addToBookMarkList){
-                    if(key in childerWindowIds){
-                        //todo
-    
-                    }else{
-                        var childernfolderName = 'Window' + (Object.keys(bookmar_tree.bookmarkChildrens).length + 1).toString();
-                        bookmar_tree.bookmarkChildrens[childernfolderName] = {
-                            windowId: key,
-                            urlList: []
+}
+
+async function moveTabsToBookmark(addToBookMarkList){
+    if(Object.keys(addToBookMarkList).length > 0){
+        if(Object.keys(bookmar_tree.bookmarkChildrens).length > 0){
+            var childerWindowIds = [];
+            var promiseList = [];
+            for(var key in bookmar_tree.bookmarkChildrens){
+                childerWindowIds.push(bookmar_tree.bookmarkChildrens[key].windowId);
+            }
+
+            for(var key in addToBookMarkList){
+                if(childerWindowIds.includes(key.toString())){
+                    
+                    for(var childernName in bookmar_tree.bookmarkChildrens){
+                        if(bookmar_tree.bookmarkChildrens[childernName].windowId === key.toString()){
+                            addToBookMarkList[key].forEach(tab => {
+                                bookmar_tree.bookmarkChildrens[childernName].urlList.push(tab.url);
+                                promiseList.push(createChildrenBookmarks(tab.url, bookmar_tree.bookmarkChildrens[childernName].childrenId));
+                                //chrome.tabs.remove(tab.id);
+                            });
+
                         }
-                        addToBookMarkList[key].forEach(tab => {
-                            bookmar_tree.bookmarkChildrens[childernfolderName].urlList.push(tab.url);
-                            //chrome.tabs.remove(tab.id);
-                        })
-                        promiseList.push(createBookmarkBarFolder(childernfolderName, bookmar_tree.bookmarkFolderId, bookmar_tree.bookmarkChildrens[childernfolderName].urlList));
                     }
-                }
-    
-                await Promise.all(promiseList);
-    
-            }else{
-                var promiseList = [];
-                
-                for(var key in addToBookMarkList){
-                    var childernfolderName = 'Window' + (Object.keys(bookmar_tree.bookmarkChildrens).length + 1).toString();
+
+
+                }else{
+                    var bmChildrenLength = Object.keys(bookmar_tree.bookmarkChildrens).length;
+                    var childernfolderName = '';
+                    var startCount = 0;
+                    while(true){
+                        startCount += 1;
+                        var tempName = 'Window' + startCount.toString();
+                        if(!bookmar_tree.bookmarkChildrens[tempName] && startCount <= bmChildrenLength + 1){
+                            childernfolderName = tempName;
+                            break;
+                        }
+                    }
+
+                    //var childernfolderName = 'Window' + (Object.keys(bookmar_tree.bookmarkChildrens).length + 1).toString();
                     bookmar_tree.bookmarkChildrens[childernfolderName] = {
                         windowId: key,
                         childrenId: null,
@@ -217,14 +237,33 @@ async function checkAndUpdateBookmarsFolder(){
                     promiseList.push(createChildrenBookmarkFolder(childernfolderName, bookmar_tree.bookmarkFolderId, 
                         bookmar_tree.bookmarkChildrens[childernfolderName].urlList));
                 }
-    
-                await Promise.all(promiseList);
-                
             }
+
+            await Promise.all(promiseList);
+
+        }else{
+            var promiseList = [];
+            
+            for(var key in addToBookMarkList){
+                var childernfolderName = 'Window' + (Object.keys(bookmar_tree.bookmarkChildrens).length + 1).toString();
+                bookmar_tree.bookmarkChildrens[childernfolderName] = {
+                    windowId: key,
+                    childrenId: null,
+                    urlList: []
+                }
+                addToBookMarkList[key].forEach(tab => {
+                    bookmar_tree.bookmarkChildrens[childernfolderName].urlList.push(tab.url);
+                    //chrome.tabs.remove(tab.id);
+                })
+                promiseList.push(createChildrenBookmarkFolder(childernfolderName, bookmar_tree.bookmarkFolderId, 
+                    bookmar_tree.bookmarkChildrens[childernfolderName].urlList));
+            }
+
+            await Promise.all(promiseList);
+            
         }
-        
+
         setToLocalStorage(GLOBAL_BOOKMARK_TREE, bookmar_tree);
-        
     }
 }
 
@@ -282,7 +321,7 @@ function createBookmarkBarFolder(){
 //checking if created bookmark folder still exists or create new
 function checkForBookmarkFolderAvailable(){
     var bmFolderId = bookmar_tree.bookmarkFolderId;
-    chrome.bookmarks.getChildren(bmFolderId, (results) => {
+    chrome.bookmarks.get(bmFolderId, (results) => {
         if(results.length == 0){
             createBookmarkBarFolder();
         }else {
