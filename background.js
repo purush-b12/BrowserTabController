@@ -70,8 +70,10 @@ async function checkAndUpdateBookmarsFolder(){
 
                 var ltabs = await chrome.tabs.query({windowId: window.id});
                 ltabs.forEach(tab => {
-                    //tab_time_map[tab.id] = (new Date()).getDate();
-                    tab_time_map[tab.id] = (new Date()).getTime();
+                    if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
+                        //tab_time_map[tab.id] = (new Date()).getDate();
+                        tab_time_map[tab.id] = (new Date()).getTime();
+                    }
                     
                 });
 
@@ -113,8 +115,11 @@ async function checkAndUpdateBookmarsFolder(){
                     var ltabs = await chrome.tabs.query({windowId: window.id});
                     ltabs.forEach(tab => {
                         if(!wtm[tab.id]){
-                            //wtm[tab.id] = (new Date()).getDate();
-                            wtm[tab.id] = (new Date()).getTime();
+                            if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
+                                //wtm[tab.id] = (new Date()).getDate();
+                                wtm[tab.id] = (new Date()).getTime();
+                            }
+                            
                         }
                     });
                     
@@ -126,8 +131,10 @@ async function checkAndUpdateBookmarsFolder(){
 
                     var ltabs = await chrome.tabs.query({windowId: window.id});
                     ltabs.forEach(tab => {
-                        //tab_time_map[tab.id] = (new Date()).getDate();
-                        tab_time_map[tab.id] = (new Date()).getTime();
+                        if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
+                            //tab_time_map[tab.id] = (new Date()).getDate();
+                            tab_time_map[tab.id] = (new Date()).getTime();
+                        }
                         
                     });
                     
@@ -416,9 +423,11 @@ function setToLocalStorage(storageKey, value){
 chrome.tabs.onCreated.addListener( (tab) => {
 
     try{
-        updateWindowTabMap(tab.windowId, tab.id);
-        // remove it from bookmarks if present
-        removeCreatedTabFromBookmarks(tab.id, tab.url);
+        if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
+            updateWindowTabMap(tab.windowId, tab.id);
+            // remove it from bookmarks if present
+            removeCreatedTabFromBookmarks(tab.id, tab.url);
+        }
     }catch(err){
         if(DEBUG_MODE){
             console.log(err);
@@ -431,9 +440,12 @@ chrome.tabs.onCreated.addListener( (tab) => {
 chrome.tabs.onUpdated.addListener( (tabId, changeInfo, tab) => {
 
     try{
-        updateWindowTabMap(tab.windowId, tab.id);
-        // remove it from bookmarks if present
-        removeCreatedTabFromBookmarks(tab.id, tab.url);
+        if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
+            updateWindowTabMap(tab.windowId, tab.id);
+            // remove it from bookmarks if present
+            removeCreatedTabFromBookmarks(tab.id, tab.url);
+        }
+        
     }catch(err){
         if(DEBUG_MODE){
             console.log(err);
@@ -563,7 +575,7 @@ function closeDuplicateTabs(){
                         for (let i = 0; i < tabs.length; i++) {
                             if (tabs[i].url) {
                                 var openURL = tabs[i].url.toString();
-                                if(urlSet[openURL] && urlSet[openURL] == true){
+                                if((urlSet[openURL] && urlSet[openURL] == true) || openURL === 'chrome://newtab/' || openURL === ''){
                                     if(!tabs[i].active || lastFocusedWindow.id != tabs[i].windowId){
                                         chrome.tabs.remove(tabs[i].id, function() {});
                                     }
