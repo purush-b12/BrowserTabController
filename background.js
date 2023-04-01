@@ -9,8 +9,8 @@ chrome.alarms.get('DuplicatTabCheckPeriodic', (alarm) => {
 
     if(!alarm){
         //every 24 hours checks for duplicate tabs and closes it
-        chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 });
-        //chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 });
+        //chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 });
+        chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 });
     }
 })
 
@@ -19,8 +19,8 @@ chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
 
     if(!alarm){
         //Every 7 days it checks for long staying tabs, moves it to bookmarks with easy accessible option and closes the tab
-        chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 * 7 });
-        //chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 2.0, periodInMinutes: 2.0});
+        //chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 * 7 });
+        chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0});
 
     }
 })
@@ -189,13 +189,15 @@ async function checkAndUpdateBookmarsFolder(){
 async function moveTabsToBookmark(addToBookMarkList){
     try{
         if(Object.keys(addToBookMarkList).length > 0){
+            var lastFocusedWindow = await chrome.windows.getLastFocused();
+
             if(Object.keys(bookmar_tree.bookmarkChildrens).length > 0){
                 var childerWindowIds = [];
                 var promiseList = [];
                 for(var key in bookmar_tree.bookmarkChildrens){
                     childerWindowIds.push(bookmar_tree.bookmarkChildrens[key].windowId);
                 }
-    
+
                 for(var key in addToBookMarkList){
                     if(childerWindowIds.includes(key.toString())){
                         
@@ -205,7 +207,8 @@ async function moveTabsToBookmark(addToBookMarkList){
                                     if(!bookmar_tree.bookmarkChildrens[childernName].urlList.includes(tab.url)){
                                         bookmar_tree.bookmarkChildrens[childernName].urlList.push(tab.url);
                                         promiseList.push(createChildrenBookmarks(tab.url, bookmar_tree.bookmarkChildrens[childernName].childrenId));
-                                        if(!tab.active){
+                                        
+                                        if(!tab.active || lastFocusedWindow.id != tab.windowId){
                                             chrome.tabs.remove(tab.id);
                                         }
                                     }
@@ -237,7 +240,7 @@ async function moveTabsToBookmark(addToBookMarkList){
                         }
                         addToBookMarkList[key].forEach(tab => {
                             bookmar_tree.bookmarkChildrens[childernfolderName].urlList.push(tab.url);
-                            if(!tab.active){
+                            if(!tab.active || lastFocusedWindow.id != tab.windowId){
                                 chrome.tabs.remove(tab.id);
                             }
                         })
@@ -260,7 +263,7 @@ async function moveTabsToBookmark(addToBookMarkList){
                     }
                     addToBookMarkList[key].forEach(tab => {
                         bookmar_tree.bookmarkChildrens[childernfolderName].urlList.push(tab.url);
-                        if(!tab.active){
+                        if(!tab.active || lastFocusedWindow.id != tab.windowId){
                             chrome.tabs.remove(tab.id);
                         }
                     })
@@ -550,7 +553,8 @@ function closeDuplicateTabs(){
     return new Promise(async (resolve) =>{
 
         try{
-            
+            var lastFocusedWindow = await chrome.windows.getLastFocused();
+
             // remove duplicate tabs for all windows
             chrome.windows.getAll((windows) => {
                 windows.forEach(window => {
@@ -560,7 +564,7 @@ function closeDuplicateTabs(){
                             if (tabs[i].url) {
                                 var openURL = tabs[i].url.toString();
                                 if(urlSet[openURL] && urlSet[openURL] == true){
-                                    if(!tabs[i].active){
+                                    if(!tabs[i].active || lastFocusedWindow.id != tabs[i].windowId){
                                         chrome.tabs.remove(tabs[i].id, function() {});
                                     }
                                     
