@@ -202,9 +202,12 @@ async function moveTabsToBookmark(addToBookMarkList){
                     for(var childernName in bookmar_tree.bookmarkChildrens){
                         if(bookmar_tree.bookmarkChildrens[childernName].windowId === key.toString()){
                             addToBookMarkList[key].forEach(tab => {
-                                bookmar_tree.bookmarkChildrens[childernName].urlList.push(tab.url);
-                                promiseList.push(createChildrenBookmarks(tab.url, bookmar_tree.bookmarkChildrens[childernName].childrenId));
-                                //chrome.tabs.remove(tab.id);
+                                if(!bookmar_tree.bookmarkChildrens[childernName].urlList.includes(tab.url)){
+                                    bookmar_tree.bookmarkChildrens[childernName].urlList.push(tab.url);
+                                    promiseList.push(createChildrenBookmarks(tab.url, bookmar_tree.bookmarkChildrens[childernName].childrenId));
+                                    //chrome.tabs.remove(tab.id);
+                                }
+                                
                             });
 
                         }
@@ -325,7 +328,15 @@ function checkForBookmarkFolderAvailable(){
         if(results.length == 0){
             createBookmarkBarFolder();
         }else {
-            // todo bookmark folder index to 0
+            // bookmark folder index to 0
+            if(results[0].index != 0){
+                chrome.bookmarks.move(
+                    bmFolderId,
+                    {'parentId': '1', 'index': 0},
+                    (result) => {},
+                )
+            }
+            
         }
 
     })
@@ -378,12 +389,16 @@ function setToLocalStorage(storageKey, value){
 // Add: tab create listener - update windows tab map in local storage
 chrome.tabs.onCreated.addListener( (tab) => {
     updateWindowTabMap(tab.windowId, tab.id);
+    // remove it from bookmarks if present
+    removeCreatedTabFromBookmarks(tab.id, tab.url);
 
 })
 
 //  Add: tab update listener - update windows tab map in local storage
 chrome.tabs.onUpdated.addListener( (tabId, changeInfo, tab) => {
     updateWindowTabMap(tab.windowId, tab.id);
+    // remove it from bookmarks if present
+    removeCreatedTabFromBookmarks(tab.id, tab.url);
 
 })
 
@@ -392,6 +407,14 @@ async function updateWindowTabMap(windowId, tabId){
     await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
     if(windows_tab_map && windows_tab_map[windowId]){
         var wtp = windows_tab_map[windowId];
+        //wtp[tabId] = (new Date()).getDate();
+        wtp[tabId] = (new Date()).getTime();
+        windows_tab_map[windowId] = wtp;
+
+        setToLocalStorage(OPEN_WINDOW_TABS_LIST_MAP, windows_tab_map);
+    }else {
+        // in case of new window created it enters here
+        var wtp = {};
         //wtp[tabId] = (new Date()).getDate();
         wtp[tabId] = (new Date()).getTime();
         windows_tab_map[windowId] = wtp;
@@ -427,11 +450,50 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 
 });
 
-// ------todo ------- Add: on window created listener - add to window tab map LS list
+//Add: Tab opening - remove from bookmark folder on browser + local storage bookmark tree
+    // Add: check if bookmark child folder is empty, delete child folder from browser bookmark + local storage
 
+async function removeCreatedTabFromBookmarks(tabId, tabUrl){
+    await getFromLocalStorage(GLOBAL_BOOKMARK_TREE);
+    for(var childrenFolderName in bookmar_tree.bookmarkChildrens){
+        if(bookmar_tree.bookmarkChildrens[childrenFolderName].urlList.includes(tabUrl)){
+            bookmar_tree.bookmarkChildrens[childrenFolderName].urlList = arrayRemove(bookmar_tree.bookmarkChildrens[childrenFolderName].urlList, tabUrl);
+            setToLocalStorage(GLOBAL_BOOKMARK_TREE, bookmar_tree);
 
-// -----todo ------- Add: Tab opening from bookmark - remove from bookmark folder on browser + local storage
-    // -----todo ------- Add: check if bookmark child folder is empty, delete child folder from browser bookmark + local storagechrome.tabs.onRemoved.addListener(
+            var childrenId = bookmar_tree.bookmarkChildrens[childrenFolderName].childrenId;
+            chrome.bookmarks.getChildren(childrenId, (results) => {
+                results.forEach(treeNode => {
+                    if(treeNode.url === tabUrl){
+                        chrome.bookmarks.remove(
+                            treeNode.id,
+                            () =>{
+                                chrome.bookmarks.getChildren(childrenId, (results) => {
+                                    if(results.length == 0){
+                                        chrome.bookmarks.remove(childrenId, ()=>{});
+                                    }
+                                });
+                            }
+                        )
+                    }
+                });
+            })
+
+            if(bookmar_tree.bookmarkChildrens[childrenFolderName].urlList.length == 0){
+                delete bookmar_tree.bookmarkChildrens[childrenFolderName];
+            }
+            setToLocalStorage(GLOBAL_BOOKMARK_TREE, bookmar_tree);
+
+        }
+    }
+
+}
+
+function arrayRemove(arr, value) { 
+    
+    return arr.filter(function(ele){ 
+        return ele != value; 
+    });
+}
 
 
 function closeDuplicateTabs(){
