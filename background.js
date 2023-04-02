@@ -3,6 +3,9 @@ const GLOBAL_BOOKMARK_TREE = 'GLOBAL_BOOKMARK_TREE';
 const OPEN_WINDOW_TABS_LIST_MAP = 'OPEN_WINDOW_TABS_LIST_MAP';
 var bookmar_tree = null;
 var windows_tab_map = null;
+var mainBookmarkCreatePromise = null;
+
+mainBookmarkCreatePromise = getFromLocalStorage(GLOBAL_BOOKMARK_TREE);
 
 // Set alarm for clearing duplicate tabs
 chrome.alarms.get('DuplicatTabCheckPeriodic', (alarm) => {
@@ -30,6 +33,11 @@ chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
 
     try{
+
+        if(mainBookmarkCreatePromise){
+            await mainBookmarkCreatePromise;
+        }
+
         var initPromiseList = [];
 
         if(alarm.name == 'DuplicatTabCheckPeriodic'){
@@ -322,54 +330,74 @@ async function createChildrenBookmarks(url, parentId){
 }
 
 //create bookmarks for all long staying tabs and close
-function createBookmarkBarFolder(){
-    try{
-        chrome.bookmarks.create(
-            {'parentId': '1', 'title': 'TabAssitant', 'index': 0},
-            function(newFolder) {
-              console.log("added folder: " + newFolder.title);    
-                bookmar_tree = {
-                    bookmarkFolderId: newFolder.id,
-                    bookmarkChildrens: {}
-                }
-                console.log(bookmar_tree);
-                setToLocalStorage(GLOBAL_BOOKMARK_TREE, bookmar_tree);
-            },
-        );
-    }catch(err){
-        if(DEBUG_MODE){
-            console.log(err);
+async function createBookmarkBarFolder(){
+    return new Promise(async (resolve) =>{
+        try{
+            chrome.bookmarks.create({'parentId': '1', 'title': 'TabAssitant', 'index': 0},
+                function(newFolder) {
+                       
+                    bookmar_tree = {
+                        bookmarkFolderId: newFolder.id,
+                        bookmarkChildrens: {}
+                    }
+                    if(DEBUG_MODE){
+                        console.log("added folder: " + newFolder.title); 
+                        console.log(bookmar_tree);
+                    }
+                    
+                    setToLocalStorage(GLOBAL_BOOKMARK_TREE, bookmar_tree);
+                    resolve();
+                },
+            );
+        }catch(err){
+            if(DEBUG_MODE){
+                console.log(err);
+            }
+            resolve();
         }
-        
-    }
+
+    });
+    
 
 }
 
 //checking if created bookmark folder still exists or create new
-function checkForBookmarkFolderAvailable(){
-    try{
-        var bmFolderId = bookmar_tree.bookmarkFolderId;
-        chrome.bookmarks.get(bmFolderId, (results) => {
-            if(results.length == 0){
-                createBookmarkBarFolder();
-            }else {
-                // bookmark folder index to 0
-                if(results[0].index != 0){
-                    chrome.bookmarks.move(
-                        bmFolderId,
-                        {'parentId': '1', 'index': 0},
-                        (result) => {},
-                    )
+async function checkForBookmarkFolderAvailable(){
+    return new Promise(async (resolve) =>{
+        try{
+            var bmFolderId = bookmar_tree.bookmarkFolderId;
+            chrome.bookmarks.get(bmFolderId, async (results) => {
+                if (chrome.runtime.lastError) {
+                    if(DEBUG_MODE){
+                        console.log(chrome.runtime.lastError.toString());
+                    }
                 }
-                
+                if(!results || results.length == 0){
+                   await createBookmarkBarFolder();
+                   resolve();
+                }else {
+                    // bookmark folder index to 0
+                    if(results[0].index != 0){
+                        chrome.bookmarks.move(
+                            bmFolderId,
+                            {'parentId': '1', 'index': 0},
+                            (result) => {},
+                        )
+                    }
+                    resolve();
+                    
+                }
+        
+            });
+        }catch(err){
+            if(DEBUG_MODE){
+                console.log(err);
             }
-    
-        });
-    }catch(err){
-        if(DEBUG_MODE){
-            console.log(err);
+            resolve();
         }
-    }
+
+    });
+    
 
 }
 
@@ -377,7 +405,7 @@ function checkForBookmarkFolderAvailable(){
 async function getFromLocalStorage(storageKey){
 
     return new Promise(async (resolve) =>{
-        chrome.storage.local.get([storageKey]).then((result) => {
+        chrome.storage.local.get([storageKey]).then(async (result) => {
             if(storageKey == GLOBAL_BOOKMARK_TREE){
                 if(Object.keys(result).length > 0){
                     bookmar_tree = result.GLOBAL_BOOKMARK_TREE; 
@@ -386,9 +414,9 @@ async function getFromLocalStorage(storageKey){
                 }
 
                 if(!bookmar_tree || Object.keys(bookmar_tree).length == 0){
-                    createBookmarkBarFolder();
+                    await createBookmarkBarFolder();
                 }else{
-                    checkForBookmarkFolderAvailable();
+                    await checkForBookmarkFolderAvailable();
                 }
 
                 resolve();
@@ -420,9 +448,12 @@ function setToLocalStorage(storageKey, value){
 }
 
 // Add: tab create listener - update windows tab map in local storage
-chrome.tabs.onCreated.addListener( (tab) => {
+chrome.tabs.onCreated.addListener(async (tab) => {
 
     try{
+        if(mainBookmarkCreatePromise){
+            await mainBookmarkCreatePromise;
+        }
         if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
             updateWindowTabMap(tab.windowId, tab.id);
             // remove it from bookmarks if present
@@ -437,9 +468,12 @@ chrome.tabs.onCreated.addListener( (tab) => {
 })
 
 //  Add: tab update listener - update windows tab map in local storage
-chrome.tabs.onUpdated.addListener( (tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     try{
+        if(mainBookmarkCreatePromise){
+            await mainBookmarkCreatePromise;
+        }
         if(tab.url.toString() !== 'chrome://newtab/' || tab.url.toString() !== ''){
             updateWindowTabMap(tab.windowId, tab.id);
             // remove it from bookmarks if present
@@ -480,6 +514,10 @@ async function updateWindowTabMap(windowId, tabId){
 // Add: manual tab close listener - remove from window tab map Local storage list 
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
     try{
+        if(mainBookmarkCreatePromise){
+            await mainBookmarkCreatePromise;
+        }
+
         await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
 
         if(windows_tab_map && windows_tab_map[removeInfo.windowId]){
@@ -500,6 +538,9 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
 //Add: on window removed listener - remove from window tab map LS list
 chrome.windows.onRemoved.addListener(async (windowId) => {
     try{
+        if(mainBookmarkCreatePromise){
+            await mainBookmarkCreatePromise;
+        }
         await getFromLocalStorage(OPEN_WINDOW_TABS_LIST_MAP);
 
         if(windows_tab_map && windows_tab_map[windowId]){
