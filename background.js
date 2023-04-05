@@ -13,7 +13,7 @@ chrome.alarms.get('DuplicatTabCheckPeriodic', (alarm) => {
     if(!alarm){
         //every 24 hours checks for duplicate tabs and closes it
         //chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 });
-        chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 });
+        //chrome.alarms.create('DuplicatTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 });
     }
 })
 
@@ -23,7 +23,7 @@ chrome.alarms.get('LongStayingTabCheckPeriodic', (alarm) => {
     if(!alarm){
         //Every 7 days it checks for long staying tabs, moves it to bookmarks with easy accessible option and closes the tab
         //chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0 * 60.0 * 24 * 7 });
-        chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0});
+        //chrome.alarms.create('LongStayingTabCheckPeriodic', { delayInMinutes: 1.0, periodInMinutes: 1.0});
 
     }
 })
@@ -333,7 +333,7 @@ async function createChildrenBookmarks(url, parentId){
 async function createBookmarkBarFolder(){
     return new Promise(async (resolve) =>{
         try{
-            chrome.bookmarks.create({'parentId': '1', 'title': 'TabAssitant', 'index': 0},
+            chrome.bookmarks.create({'parentId': '1', 'title': 'TabAssistant', 'index': 0},
                 function(newFolder) {
                        
                     bookmar_tree = {
